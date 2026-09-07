@@ -34,10 +34,10 @@ A board is an ordering over one number per player, scoped by string keys — so
 
 ## Installing
 
-Copy `addons/dot_leaderboard/` and [`dot-core`](../dot-core)'s `addons/dot_core/` into
+Copy `addons/dot_leaderboard/` and [`dot-core`](https://github.com/modcommunity/dot-core)'s `addons/dot_core/` into
 your project, and enable dot-leaderboard in *Project → Project Settings → Plugins*.
 
-[dot-auth](../dot-auth), [dot-timer](../dot-timer) and dot-server are optional and
+[dot-auth](https://github.com/modcommunity/dot-auth), [dot-timer](https://github.com/modcommunity/dot-timer) and dot-server are optional and
 none is named in the source.
 
 ## Five minutes
