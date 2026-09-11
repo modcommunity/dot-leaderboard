@@ -14,13 +14,13 @@ I intend on reviewing code, testing, and editing documentation regularly. If you
 ## Leaderboards and Player Statistics
 **Leaderboards and player statistics for any Godot game**, and the road from a game server to the TMC backbone.
 
-A board is an ordering over one number per player, scoped by string keys — so "fastest time on surf_beginner, main track, normal style", "most kills this week" and "highest arena score" are one thing with three configurations.
+A board is an ordering over one number per player, scoped by string keys, so "fastest time on surf_beginner, main track, normal style", "most kills this week" and "highest arena score" are one thing with three configurations.
 
 ## What it gives you
 
 - **Boards** with four orderings (`TIME`, `SCORE`, `POINTS`, `PENALTY`), a scope of your choosing, and rendering that knows a time from a score.
 - **Ranks materialised on write**, because "am I first" is asked far more often than a board is written to.
-- **Per-player statistics** — counters, bests and lowests — with a bridge that turns any counter into a board.
+- **Per-player statistics**: counters, bests and lowests, with a bridge that turns any counter into a board.
 - **A store interface** with an in-memory implementation. Point it at a database when you outgrow it; nothing above changes.
 - **A reporter** that batches submissions to the backbone, keeps its queue through an outage, and is bounded so a backbone down for a day cannot exhaust the server.
 
