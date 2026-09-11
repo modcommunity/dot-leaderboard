@@ -12,33 +12,23 @@ This asset, along with all the others, was built initially with **Claude Code** 
 I intend on reviewing code, testing, and editing documentation regularly. If you're interested in helping out, please let me know!
 
 ## Leaderboards and Player Statistics
-**Leaderboards and player statistics for any Godot game**, and the road from a game
-server to the TMC backbone.
+**Leaderboards and player statistics for any Godot game**, and the road from a game server to the TMC backbone.
 
-A board is an ordering over one number per player, scoped by string keys — so
-"fastest time on surf_beginner, main track, normal style", "most kills this week" and
-"highest arena score" are one thing with three configurations.
+A board is an ordering over one number per player, scoped by string keys — so "fastest time on surf_beginner, main track, normal style", "most kills this week" and "highest arena score" are one thing with three configurations.
 
 ## What it gives you
 
-- **Boards** with four orderings (`TIME`, `SCORE`, `POINTS`, `PENALTY`), a scope of
-  your choosing, and rendering that knows a time from a score.
-- **Ranks materialised on write**, because "am I first" is asked far more often than a
-  board is written to.
-- **Per-player statistics** — counters, bests and lowests — with a bridge that turns
-  any counter into a board.
-- **A store interface** with an in-memory implementation. Point it at a database when
-  you outgrow it; nothing above changes.
-- **A reporter** that batches submissions to the backbone, keeps its queue through an
-  outage, and is bounded so a backbone down for a day cannot exhaust the server.
+- **Boards** with four orderings (`TIME`, `SCORE`, `POINTS`, `PENALTY`), a scope of your choosing, and rendering that knows a time from a score.
+- **Ranks materialised on write**, because "am I first" is asked far more often than a board is written to.
+- **Per-player statistics** — counters, bests and lowests — with a bridge that turns any counter into a board.
+- **A store interface** with an in-memory implementation. Point it at a database when you outgrow it; nothing above changes.
+- **A reporter** that batches submissions to the backbone, keeps its queue through an outage, and is bounded so a backbone down for a day cannot exhaust the server.
 
 ## Installing
 
-Copy `addons/dot_leaderboard/` and [`dot-core`](https://github.com/modcommunity/dot-core)'s `addons/dot_core/` into
-your project, and enable dot-leaderboard in *Project → Project Settings → Plugins*.
+Copy `addons/dot_leaderboard/` and [`dot-core`](https://github.com/modcommunity/dot-core)'s `addons/dot_core/` into your project, and enable dot-leaderboard in *Project → Project Settings → Plugins*.
 
-[dot-auth](https://github.com/modcommunity/dot-auth), [dot-timer](https://github.com/modcommunity/dot-timer) and dot-server are optional and
-none is named in the source.
+[dot-auth](https://github.com/modcommunity/dot-auth), [dot-timer](https://github.com/modcommunity/dot-timer) and dot-server are optional and none is named in the source.
 
 ## Five minutes
 
@@ -85,15 +75,11 @@ boards.report_to_backbone = true
 boards.reporter.client = backbone_client   # dot-auth's DotBackboneClient
 ```
 
-Needs the `LEADERBOARD_WRITE` scope on a server- or app-scoped integration. Nothing is
-sent per event: entries are queued and flushed in batches, the queue survives an
-outage, and it is bounded.
+Needs the `LEADERBOARD_WRITE` scope on a server- or app-scoped integration. Nothing is sent per event: entries are queued and flushed in batches, the queue survives an outage, and it is bounded.
 
 ## Documentation
 
-[`CLAUDE.md`](CLAUDE.md) has the design reasoning: why boards and statistics are
-different problems, why the manager sorts and the store does not, and the dictionary
-aliasing bug the self-test found.
+[`CLAUDE.md`](CLAUDE.md) has the design reasoning: why boards and statistics are different problems, why the manager sorts and the store does not, and the dictionary aliasing bug the self-test found.
 
 ## Validating
 
