@@ -14,9 +14,17 @@ extends Node
 
 const CHECKS := 77
 
+## Sections entered against sections that ran to their last line, and against this. A
+## runtime error inside a section aborts that function and nothing says so; a section that
+## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
+## total is the other half — see docs/testing.md.
+const SECTIONS := 12
+
 var _passed := 0
 var _failed := 0
 var _failures := PackedStringArray()
+var _entered := 0
+var _completed := 0
 
 
 func _ready() -> void:
@@ -47,6 +55,13 @@ func _run() -> void:
 	for line in _failures:
 		print("  FAIL  %s" % line)
 
+	print("%d of %d sections ran to their last line" % [_completed, _entered])
+	if _entered != SECTIONS or _completed != _entered:
+		print("ERROR: %d sections entered and %d completed, %d expected. One aborted or was skipped." % [
+			_entered, _completed, SECTIONS
+		])
+		get_tree().quit(1)
+		return
 	# The total the section counter cannot be. A runtime error inside a section aborts
 	# that function, and the counter is satisfied because the section had already
 	# announced itself. See docs/testing.md.
@@ -57,6 +72,16 @@ func _run() -> void:
 		get_tree().quit(1)
 		return
 	get_tree().quit(1 if _failed > 0 else 0)
+
+
+func _section(title: String) -> void:
+	_entered += 1
+	print(title)
+
+
+## A section reached its last line. See [constant SECTIONS].
+func _done() -> void:
+	_completed += 1
 
 
 func _check(ok: bool, what: String, detail: String = "") -> void:
@@ -81,7 +106,7 @@ func _manager() -> DotLeaderboardManager:
 # --- Definitions -----------------------------------------------------------
 
 func _test_definitions() -> void:
-	print("board definitions")
+	_section("board definitions")
 
 	var board := DotLeaderboardDef.make(
 		&"fastest", DotLeaderboardDef.Kind.TIME, {"map": "surf_beginner"}
@@ -119,10 +144,11 @@ func _test_definitions() -> void:
 		str(scoped.scope["track"]) == "0",
 		"and stringifies, so an int and a string address one board"
 	)
+	_done()
 
 
 func _test_scope_key_is_canonical() -> void:
-	print("scope keys are canonical")
+	_section("scope keys are canonical")
 
 	# The bug this prevents: GDScript iterates a dictionary in insertion order, so
 	# two callers building the same scope in different orders would address two
@@ -145,10 +171,11 @@ func _test_scope_key_is_canonical() -> void:
 
 	var unscoped := DotLeaderboardDef.make(&"kills", DotLeaderboardDef.Kind.SCORE)
 	_check(unscoped.key() == "kills", "an unscoped board is just its id")
+	_done()
 
 
 func _test_ordering() -> void:
-	print("ordering")
+	_section("ordering")
 
 	var time := DotLeaderboardDef.make(&"t", DotLeaderboardDef.Kind.TIME)
 	_check(time.beats(9.0, 10.0), "a faster time beats a slower one")
@@ -158,10 +185,11 @@ func _test_ordering() -> void:
 	var score := DotLeaderboardDef.make(&"s", DotLeaderboardDef.Kind.SCORE)
 	_check(score.beats(10.0, 9.0), "a higher score beats a lower one")
 	_check(not score.beats(9.0, 10.0), "and not the other way")
+	_done()
 
 
 func _test_formatting() -> void:
-	print("formatting")
+	_section("formatting")
 
 	var time := DotLeaderboardDef.make(&"t", DotLeaderboardDef.Kind.TIME)
 	_check(time.format_value(83.456) == "1:23.456", "a time renders as a time")
@@ -171,12 +199,13 @@ func _test_formatting() -> void:
 	speed.decimals = 1
 	speed.unit = "m/s"
 	_check(speed.format_value(12.34) == "12.3 m/s", "and a value renders with its unit")
+	_done()
 
 
 # --- Submitting ------------------------------------------------------------
 
 func _test_submitting() -> void:
-	print("submitting")
+	_section("submitting")
 
 	var manager := _manager()
 	manager.define(DotLeaderboardDef.make(&"fastest", DotLeaderboardDef.Kind.TIME))
@@ -217,10 +246,11 @@ func _test_submitting() -> void:
 	)
 
 	manager.queue_free()
+	_done()
 
 
 func _test_ranks() -> void:
-	print("ranks")
+	_section("ranks")
 
 	var manager := _manager()
 	manager.define(DotLeaderboardDef.make(&"fastest", DotLeaderboardDef.Kind.TIME))
@@ -266,10 +296,11 @@ func _test_ranks() -> void:
 	)
 
 	manager.queue_free()
+	_done()
 
 
 func _test_refusals() -> void:
-	print("refusals")
+	_section("refusals")
 
 	var manager := _manager()
 	manager.define(DotLeaderboardDef.make(&"fastest", DotLeaderboardDef.Kind.TIME))
@@ -303,12 +334,13 @@ func _test_refusals() -> void:
 	_check((page.value as Array).is_empty(), "and nothing reached the board")
 
 	manager.queue_free()
+	_done()
 
 
 # --- Statistics ------------------------------------------------------------
 
 func _test_stats() -> void:
-	print("statistics")
+	_section("statistics")
 
 	var set := DotStatSet.new()
 	set.add(&"kills", 3.0)
@@ -362,10 +394,11 @@ func _test_stats() -> void:
 	)
 
 	manager.queue_free()
+	_done()
 
 
 func _test_publish_stat() -> void:
-	print("a counter becomes a board")
+	_section("a counter becomes a board")
 
 	var manager := _manager()
 	manager.define(DotLeaderboardDef.make(&"most_kills", DotLeaderboardDef.Kind.SCORE))
@@ -403,6 +436,7 @@ func _test_publish_stat() -> void:
 	)
 
 	manager.queue_free()
+	_done()
 
 
 # --- Reporting -------------------------------------------------------------
@@ -425,7 +459,7 @@ class FakeBackbone extends RefCounted:
 
 
 func _test_reporter_keeps_its_queue() -> void:
-	print("a backbone outage costs latency, not results")
+	_section("a backbone outage costs latency, not results")
 
 	var manager := _manager()
 	manager.report_to_backbone = true
@@ -487,10 +521,11 @@ func _test_reporter_keeps_its_queue() -> void:
 	_check(DotLeaderboardDef.kind_name(DotLeaderboardDef.Kind.PENALTY) == "PENALTY", "every kind has a name")
 
 	manager.queue_free()
+	_done()
 
 
 func _test_reporter_bounds_its_queue() -> void:
-	print("the queue is bounded")
+	_section("the queue is bounded")
 
 	var reporter := DotLeaderboardReporter.new()
 	reporter.queue_limit = 10
@@ -520,10 +555,11 @@ func _test_reporter_bounds_its_queue() -> void:
 		"and the ones kept are the newest",
 		"first is %.0f" % float(entries[0]["value"])
 	)
+	_done()
 
 
 func _test_publish_is_opt_in() -> void:
-	print("publishing is per board and opt-in")
+	_section("publishing is per board and opt-in")
 
 	var manager := _manager()
 	manager.report_to_backbone = true
@@ -560,3 +596,4 @@ func _test_publish_is_opt_in() -> void:
 	_check(not defined.ok, "and an unpublished board cannot be declared either")
 
 	manager.queue_free()
+	_done()
