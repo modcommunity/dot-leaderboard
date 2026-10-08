@@ -19,9 +19,9 @@ A board is an ordering over one number per player, scoped by string keys, so "fa
 ## What it gives you
 
 - **Boards** with four orderings (`TIME`, `SCORE`, `POINTS`, `PENALTY`), a scope of your choosing, and rendering that knows a time from a score.
-- **Ranks materialised on write**, because "am I first" is asked far more often than a board is written to.
+- **Ranks you can show**: materialised on write in memory, because "am I first" is asked far more often than a board is written to, and counted over an index in SQL, because rewriting every rank on every submission is a write per player. A tie shares a rank (1, 2, 2, 4) in both.
 - **Per-player statistics**: counters, bests and lowests, with a bridge that turns any counter into a board.
-- **A store interface** with an in-memory implementation. Point it at a database when you outgrow it; nothing above changes.
+- **A store interface** with an in-memory implementation and a SQL one, `DotLeaderboardStoreSql`, that speaks SQLite, Postgres and MySQL/MariaDB through [dot-sql](https://github.com/modcommunity/dot-sql).
 - **A reporter** that batches submissions to the backbone, keeps its queue through an outage, and is bounded so a backbone down for a day cannot exhaust the server.
 
 ## Installing
@@ -68,6 +68,21 @@ await boards.add_stats(player_id, session)
 await boards.publish_stat(&"most_jumps", {}, player_id, player_name, &"jumps")
 ```
 
+## In a database
+
+```gdscript
+var store := DotLeaderboardStoreSql.new(driver)   # any dot-sql driver
+await store.open()                                # creates or migrates its two tables
+boards.store = store
+
+await boards.submit_async(&"fastest", scope, player_id, player_name, run.time())
+var page := await boards.page_async(&"fastest", scope)
+```
+
+The store reaches its driver duck-typed, so dot-sql is only needed by the project that uses it; dot-leaderboard parses without it. Table names are configurable (`entries_table`, `stats_table`) and default to `dot_leaderboard_entries` and `dot_leaderboard_stats`. Counters are added by the database in one statement, so two servers sharing it cannot lose each other's kills.
+
+**Use the `_async` forms with it.** `submit`, `page` and `entry_for` are synchronous, because games call them without `await`, and they refuse a store that has to wait for a database rather than failing half-way; `submit_async`, `page_async` and `entry_for_async` work with every store. `add_stats`, `stats_for` and `publish_stat` are already awaited.
+
 ## Reporting to the site
 
 ```gdscript
@@ -79,13 +94,16 @@ Needs the `LEADERBOARD_WRITE` scope on a server- or app-scoped integration. Noth
 
 ## Documentation
 
-[`CLAUDE.md`](CLAUDE.md) has the design reasoning: why boards and statistics are different problems, why the manager sorts and the store does not, and the dictionary aliasing bug the self-test found.
+[`CLAUDE.md`](CLAUDE.md) has the design reasoning: why boards and statistics are different problems, why the manager sorts and the store does not, why there are two forms of `submit`, and the bugs the self-test found.
 
 ## Validating
 
 ```bash
 godot --headless --path . --import
-godot --headless --path . res://examples/leaderboard_selftest.tscn   # 69 checks
+godot --headless --path . res://examples/leaderboard_selftest.tscn   # 13 sections, 107 checks
+
+# the SQL store against real SQLite, Postgres and MariaDB (dot-sql linked in addons/)
+../dot-sql/tools/test_live.sh . res://examples/leaderboard_sql_live.tscn
 ```
 
 ## Licence

@@ -67,12 +67,27 @@ func sort_board(board: DotLeaderboardDef) -> void:
 	var rows: Array = rows_value
 	var lower := board.lower_is_better()
 
+	# A tie is broken by player id only so that the order is stable between two reads —
+	# `sort_custom` is not a stable sort, and a page boundary that moves between two
+	# requests shows one player twice and another not at all. It is not a ranking rule:
+	# see below. The SQL store orders the same way, so the two agree page for page.
 	rows.sort_custom(func(a: DotLeaderboardEntry, b: DotLeaderboardEntry) -> bool:
+		if a.value == b.value:
+			return String(a.player_id) < String(b.player_id)
 		return a.value < b.value if lower else a.value > b.value
 	)
 
+	# Competition ranking: a tie shares a rank, and the next distinct value is ranked by
+	# how many are ahead of it (1, 2, 2, 4). Until 2026-10-08 the rank was the array index,
+	# so two identical times were 2nd and 3rd in whichever order the sort left them —
+	# awarding one of them a place over the other by a rule nobody agreed to (see
+	# DotLeaderboardEntry.set_at), and disagreeing with the SQL store, which counts.
 	for i in range(rows.size()):
-		(rows[i] as DotLeaderboardEntry).rank = i + 1
+		var entry := rows[i] as DotLeaderboardEntry
+		if i > 0 and entry.value == (rows[i - 1] as DotLeaderboardEntry).value:
+			entry.rank = (rows[i - 1] as DotLeaderboardEntry).rank
+		else:
+			entry.rank = i + 1
 
 
 func page(

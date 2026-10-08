@@ -16,6 +16,11 @@ extends Node
 ##     "style": "normal"}, player_id, player_name, run.time())
 ## [/codeblock]
 ##
+## With a store that reaches a database ([DotLeaderboardStoreSql]), open it first and use
+## the awaited forms — [method submit_async], [method page_async], [method entry_for_async] —
+## which work with every store; the plain forms are synchronous and refuse such a store in
+## words. Why there are two is written above [method submit].
+##
 ## [b]Boards are defined once and addressed by id plus scope.[/b] A timer has one
 ## board — "fastest time" — instantiated per map, track and style, and defining
 ## fourteen thousand of them up front would be absurd. So a definition is a template
@@ -49,7 +54,7 @@ signal stats_changed(player_id: StringName, totals: DotStatSet)
 ## Seconds between flushes of the report queue. 0 disables the timer.
 @export_range(0.0, 600.0, 1.0) var report_interval: float = 30.0
 
-## Where entries live.
+## Where entries live. A store that suspends must be opened before it is used here.
 var store: DotLeaderboardStore = null
 
 ## Sends published entries to the backbone. Assign its client from dot-auth.
@@ -150,8 +155,21 @@ func definitions() -> Array[DotLeaderboardDef]:
 
 
 # --- Submitting ------------------------------------------------------------
+#
+# [b]Two forms of the three calls a game makes, and the reason is a parse error.[/b] A store
+# is "a coroutine in shape" (DotLeaderboardStore), but `submit`, `page` and `entry_for`
+# were written against the memory store and called it without `await`. Against a store that
+# really suspends — DotLeaderboardStoreSql — that aborts the call with "Trying to call an
+# async function without await" and hands the caller null. Adding the `await` here is the
+# fix, and it makes each of them a coroutine, which is a PARSE error at every caller that
+# does not await it: game-arena (`_cmd_boards`, headless_match) and game-hungario (`_submit`,
+# `page`) call them synchronously today, and an addon edit that stops two games parsing is
+# not a fix. So the `_async` forms are the real ones and work with every store; the plain
+# forms stay synchronous, keep working with the memory store, and refuse an asynchronous
+# store in words (DotLeaderboardStore.is_synchronous). When those games await, the plain
+# forms can become the awaited ones and the `_async` names can go.
 
-## Files a value on a board.
+## Files a value on a board. Synchronous; see the note above, and [method submit_async].
 ##
 ## [b]Only an improvement is written.[/b] The comparison uses the board's own
 ## ordering, which is why this goes through the manager rather than the store — a
@@ -163,6 +181,131 @@ func submit(
 	player_name: String,
 	value: float,
 	meta: Dictionary = {}
+) -> DotResult:
+	var ready := _prepare(board_id, scope, player_id, value)
+	if not ready.ok:
+		return ready
+	var synchronous := _synchronous_store("submit")
+	if not synchronous.ok:
+		return synchronous
+
+	var board: DotLeaderboardDef = ready.value
+	var existing := store.entry_for(board, player_id)
+	if not existing.ok:
+		return existing
+
+	var previous: DotLeaderboardEntry = (
+		existing.value if existing.value is DotLeaderboardEntry else null
+	)
+	if previous != null and not board.beats(value, previous.value):
+		# Not an error. Most results are worse than the player's own best, and
+		# treating that as a failure means every caller has to tell the two apart.
+		return DotResult.success(previous)
+
+	var entry := DotLeaderboardEntry.make(board.key(), player_id, player_name, value, meta)
+	var wrote := store.put(entry)
+	if not wrote.ok:
+		entry_refused.emit(board_id, player_id, wrote.error.message)
+		return wrote
+
+	# The store holds entries and does not know the ordering, so the manager — which
+	# does — asks it to re-sort and re-rank. A store that does its own ordering
+	# overrides this by ignoring the call.
+	if store.has_method("sort_board"):
+		store.call("sort_board", board)
+
+	return _accepted(board, entry, previous)
+
+
+## [method submit], awaited, for any store — including one that reaches a database.
+func submit_async(
+	board_id: StringName,
+	scope: Dictionary,
+	player_id: StringName,
+	player_name: String,
+	value: float,
+	meta: Dictionary = {}
+) -> DotResult:
+	var ready := _prepare(board_id, scope, player_id, value)
+	if not ready.ok:
+		return ready
+
+	var board: DotLeaderboardDef = ready.value
+	var existing: DotResult = await store.entry_for(board, player_id)
+	if not existing.ok:
+		return existing
+
+	var previous: DotLeaderboardEntry = (
+		existing.value if existing.value is DotLeaderboardEntry else null
+	)
+	if previous != null and not board.beats(value, previous.value):
+		return DotResult.success(previous)
+
+	var entry := DotLeaderboardEntry.make(board.key(), player_id, player_name, value, meta)
+	var wrote: DotResult = await store.put(entry)
+	if not wrote.ok:
+		entry_refused.emit(board_id, player_id, wrote.error.message)
+		return wrote
+
+	await _rank_written(board, entry)
+
+	return _accepted(board, entry, previous)
+
+
+## Writes [param value] whether or not it beats the held one: a board whose newest value
+## is the right one ([member DotLeaderboardDef.running_total]). Awaited, for any store.
+func replace_async(
+	board_id: StringName,
+	scope: Dictionary,
+	player_id: StringName,
+	player_name: String,
+	value: float,
+	meta: Dictionary = {}
+) -> DotResult:
+	var ready := _prepare(board_id, scope, player_id, value)
+	if not ready.ok:
+		return ready
+
+	var board: DotLeaderboardDef = ready.value
+	var existing: DotResult = await store.entry_for(board, player_id)
+	var previous: DotLeaderboardEntry = (
+		existing.value if existing.ok and existing.value is DotLeaderboardEntry else null
+	)
+	if previous != null and is_equal_approx(previous.value, value) and previous.player_name == player_name:
+		return DotResult.success(previous)
+
+	var entry := DotLeaderboardEntry.make(board.key(), player_id, player_name, value, meta)
+	var wrote: DotResult = await store.put(entry)
+	if not wrote.ok:
+		entry_refused.emit(board_id, player_id, wrote.error.message)
+		return wrote
+
+	await _rank_written(board, entry)
+
+	return _accepted(board, entry, previous)
+
+
+## Ranks the entry just written. Awaited: the SQL store ranks THAT entry with a query
+## ([code]rank_entry[/code]) — a per-board "last written" slot was overwritten by a second
+## submission to the same board before the first was ranked, and the first went back
+## unranked. A rank that could not be read is not a refusal; the entry IS on the board.
+func _rank_written(board: DotLeaderboardDef, entry: DotLeaderboardEntry) -> void:
+	var ranked: Variant = null
+	if store.has_method("rank_entry"):
+		ranked = await store.call("rank_entry", board, entry.player_id)
+		if ranked is DotResult and (ranked as DotResult).ok:
+			entry.rank = int((ranked as DotResult).value)
+	elif store.has_method("sort_board"):
+		ranked = await store.call("sort_board", board)
+	if ranked is DotResult and not (ranked as DotResult).ok:
+		DotLog.debug(CHANNEL, "an accepted entry could not be ranked", {
+			"board": board.key(), "why": (ranked as DotResult).error.message,
+		})
+
+
+## The refusals both forms share: an unknown board, a non-finite value.
+func _prepare(
+	board_id: StringName, scope: Dictionary, player_id: StringName, value: float
 ) -> DotResult:
 	var board := board_for(board_id, scope)
 
@@ -179,36 +322,15 @@ func submit(
 		entry_refused.emit(board_id, player_id, reason)
 		return DotResult.fail(DotError.CODE_INVALID, reason, str(value))
 
-	var existing := store.entry_for(board, player_id)
+	if store == null:
+		return DotResult.fail(DotError.CODE_STATE, "The board manager has no store.")
 
-	if not existing.ok:
-		return existing
+	return DotResult.success(board)
 
-	var previous: DotLeaderboardEntry = (
-		existing.value if existing.value is DotLeaderboardEntry else null
-	)
 
-	if previous != null and not board.beats(value, previous.value):
-		# Not an error. Most results are worse than the player's own best, and
-		# treating that as a failure means every caller has to tell the two apart.
-		return DotResult.success(previous)
-
-	var entry := DotLeaderboardEntry.make(
-		board.key(), player_id, player_name, value, meta
-	)
-
-	var wrote := store.put(entry)
-
-	if not wrote.ok:
-		entry_refused.emit(board_id, player_id, wrote.error.message)
-		return wrote
-
-	# The store holds entries and does not know the ordering, so the manager — which
-	# does — asks it to re-sort and re-rank. A store that does its own ordering
-	# overrides this by ignoring the call.
-	if store.has_method("sort_board"):
-		store.call("sort_board", board)
-
+func _accepted(
+	board: DotLeaderboardDef, entry: DotLeaderboardEntry, previous: DotLeaderboardEntry
+) -> DotResult:
 	if report_to_backbone:
 		reporter.queue_entry(board, entry)
 
@@ -217,7 +339,20 @@ func submit(
 	return DotResult.success(entry)
 
 
-## A page of a board.
+## Refuses a store that suspends, from a synchronous call that cannot wait for it.
+func _synchronous_store(method: String) -> DotResult:
+	if store == null:
+		return DotResult.fail(DotError.CODE_STATE, "The board manager has no store.")
+	if store.is_synchronous():
+		return DotResult.success(true)
+	return DotResult.fail(
+		DotError.CODE_UNSUPPORTED,
+		"This store answers asynchronously; await %s_async() instead." % method,
+		str(store.describe().get("implementation", ""))
+	)
+
+
+## A page of a board. Synchronous; see [method page_async].
 func page(
 	board_id: StringName,
 	scope: Dictionary = {},
@@ -231,12 +366,39 @@ func page(
 			DotError.CODE_IO, "No such board.", String(board_id)
 		)
 
+	var synchronous := _synchronous_store("page")
+	if not synchronous.ok:
+		return synchronous
+
 	return store.page(
 		board, offset, limit if limit > 0 else board.page_size
 	)
 
 
-## A player's entry on a board, or a success carrying null.
+## [method page], awaited, for any store.
+func page_async(
+	board_id: StringName,
+	scope: Dictionary = {},
+	offset: int = 0,
+	limit: int = 0
+) -> DotResult:
+	var board := board_for(board_id, scope)
+
+	if board == null:
+		return DotResult.fail(
+			DotError.CODE_IO, "No such board.", String(board_id)
+		)
+
+	if store == null:
+		return DotResult.fail(DotError.CODE_STATE, "The board manager has no store.")
+
+	return await store.page(
+		board, offset, limit if limit > 0 else board.page_size
+	)
+
+
+## A player's entry on a board, or a success carrying null. Synchronous; see
+## [method entry_for_async].
 func entry_for(
 	board_id: StringName, scope: Dictionary, player_id: StringName
 ) -> DotResult:
@@ -247,14 +409,38 @@ func entry_for(
 			DotError.CODE_IO, "No such board.", String(board_id)
 		)
 
+	var synchronous := _synchronous_store("entry_for")
+	if not synchronous.ok:
+		return synchronous
+
 	return store.entry_for(board, player_id)
 
 
+## [method entry_for], awaited, for any store.
+func entry_for_async(
+	board_id: StringName, scope: Dictionary, player_id: StringName
+) -> DotResult:
+	var board := board_for(board_id, scope)
+
+	if board == null:
+		return DotResult.fail(
+			DotError.CODE_IO, "No such board.", String(board_id)
+		)
+
+	if store == null:
+		return DotResult.fail(DotError.CODE_STATE, "The board manager has no store.")
+
+	return await store.entry_for(board, player_id)
+
+
 # --- Statistics ------------------------------------------------------------
+#
+# Awaited in place. Unlike the three above, every caller in the family already awaits these,
+# so making them coroutines broke nothing.
 
 ## Adds counters to a player's totals.
 func add_stats(player_id: StringName, stats: DotStatSet) -> DotResult:
-	var added := store.add_stats(player_id, stats)
+	var added: DotResult = await store.add_stats(player_id, stats)
 
 	if added.ok and added.value is DotStatSet:
 		stats_changed.emit(player_id, added.value)
@@ -263,7 +449,7 @@ func add_stats(player_id: StringName, stats: DotStatSet) -> DotResult:
 
 
 func stats_for(player_id: StringName) -> DotResult:
-	return store.stats_for(player_id)
+	return await store.stats_for(player_id)
 
 
 ## Files a player's counter onto a board — "most kills", "furthest travelled".
@@ -279,7 +465,7 @@ func publish_stat(
 	player_name: String,
 	stat_id: StringName
 ) -> DotResult:
-	var totals := store.stats_for(player_id)
+	var totals: DotResult = await store.stats_for(player_id)
 
 	if not totals.ok:
 		return totals
@@ -289,7 +475,7 @@ func publish_stat(
 	if not set.has(stat_id):
 		return DotResult.success(null)
 
-	return await submit(
+	return await submit_async(
 		board_id, scope, player_id, player_name, set.get_value(stat_id)
 	)
 

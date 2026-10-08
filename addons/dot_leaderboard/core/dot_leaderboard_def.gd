@@ -75,6 +75,14 @@ enum Kind {
 ## happens because a default was permissive.
 @export var publish: bool = false
 
+## Whether the newest value replaces the held one, even when it is worse.
+##
+## For a running total that can go DOWN — a ranking total re-scored when somebody else
+## beats a record — where "keep the best" would freeze a player at the highest total they
+## ever had. Written with [method DotLeaderboardManager.replace_async], and reported to the
+## backbone with its `overwrite` flag, which the site's submit takes per request.
+@export var running_total: bool = false
+
 
 static func make(
 	p_id: StringName, p_kind: Kind, p_scope: Dictionary = {}
@@ -192,6 +200,7 @@ func to_dictionary() -> Dictionary:
 		"page_size": page_size,
 		"visible": visible,
 		"publish": publish,
+		"running_total": running_total,
 	}
 
 
@@ -207,6 +216,7 @@ static func from_dictionary(data: Dictionary) -> DotLeaderboardDef:
 	board.page_size = clampi(int(data.get("page_size", 25)), 1, 500)
 	board.visible = bool(data.get("visible", true))
 	board.publish = bool(data.get("publish", false))
+	board.running_total = bool(data.get("running_total", false))
 
 	var scope_value: Variant = data.get("scope", {})
 	board.scope = (

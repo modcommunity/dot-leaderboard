@@ -82,6 +82,21 @@ func stats_for(_player_id: StringName) -> DotResult:
 	)
 
 
+## Whether every method here answers without suspending.
+##
+## [b]True by default, and only a store that reaches a database says otherwise.[/b]
+## [DotLeaderboardManager]'s [code]submit[/code], [code]page[/code] and
+## [code]entry_for[/code] are synchronous — two games call them without [code]await[/code],
+## and making them coroutines is a parse error in both — so they call the store without
+## awaiting it. A store that suspends under a call nobody awaited aborts that function with
+## "Trying to call an async function without await" and hands the caller null. So the
+## synchronous forms ask this first and refuse a store that says false, naming the
+## [code]_async[/code] form that works with every store. Default true so a game's own
+## in-memory store keeps working without overriding anything.
+func is_synchronous() -> bool:
+	return true
+
+
 func describe() -> Dictionary:
 	return {
 		"implementation": (

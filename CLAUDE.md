@@ -41,6 +41,8 @@ addons/dot_leaderboard/
   store/
     dot_leaderboard_store.gd        where entries live (abstract)
     dot_leaderboard_store_memory.gd sorted on write, ranks materialised
+    dot_leaderboard_store_sql.gd    the same, in SQLite, Postgres or MySQL via dot-sql
+    dot_leaderboard_sql_schema.gd   its two tables as dot-sql specs, its statements
   net/
     dot_leaderboard_reporter.gd  batches, queues and retries to the backbone
   runtime/
@@ -75,6 +77,10 @@ interface awkward for a database implementation that keys on a board id alone.
 
 **Ranks are materialised on write.** "Am I first" is asked far more often than a board
 is written, and computing it on read means sorting the board per request.
+
+That is the memory store's answer, and the SQL store's is different on purpose: a table that rewrote every row's rank on every submission turns one write into a write per player on the board, under a lock, on the busiest board. There the index *is* the order, and a rank is a count of the strictly better rows over `(board_key, score)` — computed per row of a page in the same SELECT.
+
+**A tie shares a rank** (1, 2, 2, 4), in both stores. Until 2026-10-08 the memory store ranked by array index, so two identical times were 2nd and 3rd in whichever order an unstable `sort_custom` left them — a ranking rule nobody agreed to (`DotLeaderboardEntry.set_at` says why the older one is not first either), and one the SQL store's count could never reproduce. Both now break a tie by player id for a stable page boundary only; the `ranks` section asserts 1, 2, 2, 4.
 
 **A store never decides whether an entry is allowed.** It writes what it is given.
 Whether the value is plausible, whether the player is banned, whether the run was
@@ -128,6 +134,19 @@ per-scope pseudonymous id precisely so operators cannot correlate their players 
 servers. The backbone maps it to an account at the point of reporting, if the player
 has linked one.
 
+## SQL storage, through dot-sql
+
+`DotLeaderboardStoreSql` holds its driver **untyped** and asks it for `query`, `execute`, `batch`, `upsert_sql`, `dialect` and `migrate`, so no file in the addon names a dot-sql class and the addon parses in a project that has not installed it — the same bargain dot-moderation's SQL store makes. dot-sql is linked into `addons/` (gitignored) only for the suites. The tables are `DotLeaderboardSqlSchema`'s plain-dictionary specs, which the driver renders per dialect, so MySQL's refusal to index TEXT and its missing `CREATE INDEX IF NOT EXISTS` are dot-sql's problem rather than a fourth copy here. A database written by a newer build is refused at `open()`, by dot-sql's migrator, rather than read with columns that changed meaning.
+
+- **`board_key` is the whole address** (`DotLeaderboardDef.key()`), not an id and a scope in columns, for the reason the scope is string keys at all.
+- **No column is `value`, `rank` or `key`.** `rank` and `key` are reserved on MySQL and refused by dot-sql; the value is `score`, a counter is `amount`, a computed rank comes back as `place`.
+- **Counters are added by the database**, `amount = amount + excluded.amount` (MySQL: `amount + VALUES(amount)`), the one statement spelled per dialect. A read, an add and a write from two servers at once lose one of the two kills; the arithmetic belongs where the row lock is.
+- **`put()` is an unconditional upsert** and returns the previous entry. Whether a value is an improvement is still the manager's call, because the store still has no ordering to judge by.
+
+**The manager never awaited its store, and that is why there are `_async` forms.** `DotLeaderboardStore` says every method is "a coroutine in shape … because an interface written against the in-memory case has to be rewritten the first time somebody points it at a database" — and the manager called `store.entry_for`, `store.put` and `store.page` without `await`. Against a store that really suspends, Godot aborts the call with *"Trying to call an async function without await"* and the caller gets null. Adding the `await` makes `submit`, `page` and `entry_for` coroutines, which is a **parse error** at every caller that does not await them — and game-arena (`arena_module._cmd_boards`, `headless_match`) and game-hungario (`hungry_progress._submit`, `.page`) do not. An addon edit that stops two games parsing is not a fix, so `submit_async`, `page_async` and `entry_for_async` are the awaited forms and work with every store, and the plain forms stay synchronous and **refuse** a store whose `is_synchronous()` is false, naming the form that works. When those four call sites await, the plain forms can become the awaited ones. `add_stats`, `stats_for` and `publish_stat` had no synchronous callers and are awaited in place.
+
+`sort_board` is what the manager calls after a write; in SQL it re-sorts nothing and ranks the one entry it just wrote, so the entry `submit_async` hands back says "4th" exactly as the memory store's would.
+
 ## The backbone endpoints
 
 `POST /api/integration/v1/leaderboard/define` and `.../submit`, with the
@@ -147,8 +166,14 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-godot --headless --path . res://examples/leaderboard_selftest.tscn   # 69 checks
+godot --headless --path . res://examples/leaderboard_selftest.tscn   # 13 sections, 107 checks
+
+# The SQL store against real databases, through dot-sql's gateway. SQLite always;
+# Postgres and MySQL/MariaDB when DOT_SQL_PG_DSN / DOT_SQL_MYSQL_DSN are set.
+../dot-sql/tools/test_live.sh . res://examples/leaderboard_sql_live.tscn   # 17 checks per dialect
 ```
+
+The selftest's last section drives the SQL store with dot-sql's recording driver: which statements, in which order, bound how, mapped back how, what a failure does, and that a newer schema is refused. It cannot say whether the SQL is valid; the live scene is what does, and it has run green on SQLite, Postgres 17 and MariaDB 11.8 (2026-10-08).
 
 The suite found one bug, and it was a good one: **`to_dictionary()` handed out its own
 `scope` dictionary**. A `Dictionary` is a reference in GDScript, and `scoped()`
@@ -172,7 +197,7 @@ backbone type they mirror, and the suite asserts the field names.
 
 | To change | Where |
 | --- | --- |
-| Where entries live | `DotLeaderboardStore` subclass on `DotLeaderboardManager.store` |
+| Where entries live | `DotLeaderboardStore` subclass on `DotLeaderboardManager.store`; `DotLeaderboardStoreSql` for a database |
 | What a board measures and how it sorts | `DotLeaderboardDef.Kind` |
 | What a board is per | `DotLeaderboardDef.scope`, and `scoped()` per instance |
 | How a value renders | `decimals`, `unit`, or override `format_value` |
@@ -195,3 +220,8 @@ backbone type they mirror, and the suite asserts the field names.
 - **Anti-cheat.** The refusals here are structural (a NaN, an unknown board).
   Judging whether a score is plausible needs the context the game has and this does
   not.
+
+## Running totals (2026-10-08)
+
+`DotLeaderboardDef.running_total` marks a board whose newest value is the right one even when it is lower: a ranking total that drops when somebody else's record re-scores the board. "Keep the best" froze a player at the highest total they ever had. `DotLeaderboardManager.replace_async` writes one without the improvement test, and the reporter sends such entries in their own request with the site's `overwrite: true` (the site's flag is per request, so a batch is the run of queued entries that agree about it, in order). The SQL store ranks the entry just written by player (`rank_entry`); a per-board "last written" slot was overwritten by a second submission before the first was ranked.
+

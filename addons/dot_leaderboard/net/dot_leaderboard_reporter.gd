@@ -103,6 +103,8 @@ func queue_entry(
 		"value": entry.value,
 		"meta": entry.meta,
 		"setAt": entry.set_at,
+		# Not a wire field: which request this entry must travel in. See flush().
+		"_overwrite": board.running_total,
 	})
 
 	while _queue.size() > queue_limit:
@@ -140,14 +142,21 @@ func flush() -> DotResult:
 			"assign DotLeaderboardReporter.client from dot-auth's DotBackboneClient"
 		)
 
-	var count := mini(_queue.size(), batch_limit)
+	# The site's `overwrite` is per request, so a batch is the run of queued entries
+	# that agree about it, from the front. Taking the run rather than sorting the queue
+	# keeps entries in the order they happened.
+	var overwrite := bool(_queue[0].get("_overwrite", false))
+	var count := 0
 	var batch: Array = []
 
-	for i in range(count):
-		batch.append(_queue[i])
+	while count < mini(_queue.size(), batch_limit) and bool(_queue[count].get("_overwrite", false)) == overwrite:
+		var wire: Dictionary = (_queue[count] as Dictionary).duplicate()
+		wire.erase("_overwrite")
+		batch.append(wire)
+		count += 1
 
 	var result: Variant = await client.call(
-		"post_integration", SUBMIT_PATH, {"entries": batch}
+		"post_integration", SUBMIT_PATH, {"entries": batch, "overwrite": overwrite}
 	)
 
 	if not (result is DotResult):
