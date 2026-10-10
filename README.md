@@ -94,7 +94,7 @@ Needs the `LEADERBOARD_WRITE` scope on a server- or app-scoped integration. Noth
 
 ## Documentation
 
-[`CLAUDE.md`](CLAUDE.md) has the design reasoning: why boards and statistics are different problems, why the manager sorts and the store does not, why there are two forms of `submit`, and the bugs the self-test found.
+[`docs/`](docs/README.md) has the design reasoning: why boards and statistics are different problems, why the manager sorts and the store does not, why there are two forms of `submit`, and the bugs the self-test found.
 
 ## Validating
 
