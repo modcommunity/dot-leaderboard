@@ -12,7 +12,7 @@ extends Node
 ## `_test_reporter_keeps_its_queue` checks that a backbone outage costs latency rather
 ## than results.
 
-const CHECKS := 107
+const CHECKS := 110
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -172,6 +172,35 @@ func _test_scope_key_is_canonical() -> void:
 
 	var unscoped := DotLeaderboardDef.make(&"kills", DotLeaderboardDef.Kind.SCORE)
 	_check(unscoped.key() == "kills", "an unscoped board is just its id")
+
+	# validate() admits StringName keys, and Godot sorts StringNames by where they
+	# were interned rather than by text, so a key sorted with sort() names a different
+	# board in every process — and a mixed dictionary sorts all Strings before all
+	# StringNames. The key is pinned: it is the database's and the site's address.
+	var pinned := "fastest|map=surf_beginner;style=normal;track=0"
+	_check(a.key() == pinned, "the key is the scope sorted by text", a.key())
+	var names := DotLeaderboardDef.make(&"fastest", DotLeaderboardDef.Kind.TIME, {
+		&"track": "0", &"style": "normal", &"map": "surf_beginner",
+	})
+	var mixed := DotLeaderboardDef.make(&"fastest", DotLeaderboardDef.Kind.TIME, {
+		"track": "0", &"map": "surf_beginner", "style": "normal",
+	})
+	_check(names.key() == pinned and mixed.key() == pinned,
+		"and StringName or mixed keys give the same one", "%s / %s" % [names.key(), mixed.key()])
+
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20261011
+	var wide := {}
+	for _i in range(30):
+		var k := ""
+		for _j in range(6):
+			k += char(97 + rng.randi() % 26)
+		wide[StringName(k)] = "x"
+	var listed := Array(DotLeaderboardDef.make(&"w", DotLeaderboardDef.Kind.SCORE, wide)
+		.scope_key().split(";"))
+	var by_text := listed.duplicate()
+	by_text.sort()
+	_check(listed == by_text, "thirty StringName keys come out in text order")
 	_done()
 
 

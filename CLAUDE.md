@@ -36,7 +36,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 ## Rules that bite
 
 - A board is one `DotLeaderboardDef` with a `Kind`, a string-keyed `scope` and rendering; never fixed scope columns. [design](docs/design.md#the-one-idea)
-- `scope_key()` sorts; `to_dictionary()` copies its dictionaries. Both have a guard in the suite. [design](docs/design.md#the-one-idea)
+- `scope_key()` sorts **by text** (`sort_custom` on `str`, never `sort()`: StringName keys sort by interning); `to_dictionary()` copies its dictionaries. Both have a guard in the suite. [design](docs/design.md#the-one-idea)
 - `DotStatSet` is additive; `set_best`/`set_lowest` are methods, not a flag; `from_dictionary` drops non-numbers. [design](docs/design.md#boards-and-statistics-are-different-problems)
 - The manager owns ordering and improvement; a store writes what it is given and judges nothing. [design](docs/design.md#why-the-manager-sorts-and-the-store-does-not)
 - Ties share a rank (1, 2, 2, 4) in both stores; player id breaks a tie only for paging. [design](docs/design.md#why-the-manager-sorts-and-the-store-does-not)

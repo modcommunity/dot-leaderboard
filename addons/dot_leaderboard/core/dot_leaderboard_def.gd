@@ -117,9 +117,14 @@ func beats(challenger: float, incumbent: float) -> bool:
 ## same board.[/b] A dictionary's iteration order in GDScript is insertion order, so
 ## without the sort `{"map": x, "track": y}` and `{"track": y, "map": x}` are two
 ## different boards holding half the entries each — and nothing anywhere errors.
+##
+## [b]By text, never with sort().[/b] [method validate] admits StringName keys, and Godot
+## orders StringNames by where they were interned, so sort() gave one scope a different
+## key in every process — and in a dictionary mixing the two types, every String before
+## every StringName. The key is a database row's address and the site's.
 func scope_key() -> String:
 	var keys := scope.keys()
-	keys.sort()
+	keys.sort_custom(func(x: Variant, y: Variant) -> bool: return str(x) < str(y))
 
 	var parts := PackedStringArray()
 
