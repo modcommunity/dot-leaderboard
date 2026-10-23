@@ -21,9 +21,10 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | Path | What |
 | --- | --- |
 | `addons/dot_leaderboard/core/` | `DotLeaderboardDef` (ordering, scope, rendering), `DotLeaderboardEntry`, `DotStatSet` (per-player counters; not a board) |
-| `addons/dot_leaderboard/store/` | `DotLeaderboardStore` (abstract), memory (sorted on write, ranks materialised), SQL (SQLite, Postgres, MySQL via dot-sql), `DotLeaderboardSqlSchema` |
+| `addons/dot_leaderboard/store/` | `DotLeaderboardStore` (abstract), backbone (the site's `/api/integration/v1/leaderboard/*`: top, around-me, rank; remote, `_async` only; the manager skips its reporter for it), memory (sorted on write, ranks materialised), SQL (SQLite, Postgres, MySQL via dot-sql), `DotLeaderboardSqlSchema` |
 | `addons/dot_leaderboard/net/` | `DotLeaderboardReporter`: batches, queues and retries to the backbone |
 | `addons/dot_leaderboard/runtime/` | `DotLeaderboardManager`: boards, store and reporter; the node a game adds |
+| `examples/leaderboard_backbone_test.tscn` | the backbone store against a fake site through dot-auth's client |
 | `examples/leaderboard_selftest.tscn` | the suite (the SQL store through dot-sql's recording driver) |
 | `examples/leaderboard_sql_live.tscn` | the SQL store against real databases |
 
@@ -53,7 +54,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 
 | To change | Where |
 | --- | --- |
-| Where entries live | `DotLeaderboardStore` subclass on `DotLeaderboardManager.store`; `DotLeaderboardStoreSql` for a database |
+| Where entries live | `DotLeaderboardStore` subclass on `DotLeaderboardManager.store`; `DotLeaderboardStoreSql` for a database; `DotLeaderboardStoreBackbone` (or `backend = "backbone"` plus `backbone_client`) for the site's own boards |
 | What a board measures and how it sorts | `DotLeaderboardDef.Kind` |
 | What a board is per | `DotLeaderboardDef.scope`, and `scoped()` per instance |
 | How a value renders | `decimals`, `unit`, or override `format_value` |

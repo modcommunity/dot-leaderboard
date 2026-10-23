@@ -54,6 +54,16 @@ signal stats_changed(player_id: StringName, totals: DotStatSet)
 ## Seconds between flushes of the report queue. 0 disables the timer.
 @export_range(0.0, 600.0, 1.0) var report_interval: float = 30.0
 
+@export_group("Backend")
+
+## Where boards live when [member store] is not assigned: this process (default) or the TMC
+## backbone through [member backbone_client] or the registered dot-auth client.
+@export_enum("memory", "backbone") var backend: String = "memory"
+
+## The client for the "backbone" backend: anything with `post_integration` and
+## `get_integration`. Falls back to the `dot_backbone_client` registry service.
+var backbone_client: Object = null
+
 ## Where entries live. A store that suspends must be opened before it is used here.
 var store: DotLeaderboardStore = null
 
@@ -74,7 +84,7 @@ func _ready() -> void:
 		return
 
 	if store == null:
-		store = DotLeaderboardStoreMemory.new()
+		store = _make_store()
 
 	if report_interval > 0.0:
 		_report_timer = Timer.new()
@@ -82,6 +92,20 @@ func _ready() -> void:
 		_report_timer.autostart = true
 		_report_timer.timeout.connect(_on_report_due)
 		add_child(_report_timer)
+
+
+func _make_store() -> DotLeaderboardStore:
+	if backend != "backbone":
+		return DotLeaderboardStoreMemory.new()
+
+	var client: Object = backbone_client
+	if client == null:
+		client = DotRegistry.get_service(&"dot_backbone_client")
+	if client == null:
+		DotLog.warn(CHANNEL, "backend is backbone but no client is available; using memory")
+		return DotLeaderboardStoreMemory.new()
+
+	return DotLeaderboardStoreBackbone.with_client(client)
 
 
 func _exit_tree() -> void:
@@ -231,6 +255,10 @@ func submit_async(
 		return ready
 
 	var board: DotLeaderboardDef = ready.value
+	var declared := await _declare(board)
+	if not declared.ok:
+		return declared
+
 	var existing: DotResult = await store.entry_for(board, player_id)
 	if not existing.ok:
 		return existing
@@ -267,6 +295,10 @@ func replace_async(
 		return ready
 
 	var board: DotLeaderboardDef = ready.value
+	var declared := await _declare(board)
+	if not declared.ok:
+		return declared
+
 	var existing: DotResult = await store.entry_for(board, player_id)
 	var previous: DotLeaderboardEntry = (
 		existing.value if existing.ok and existing.value is DotLeaderboardEntry else null
@@ -328,10 +360,18 @@ func _prepare(
 	return DotResult.success(board)
 
 
+## Tells a store that keeps boards elsewhere about this one, once.
+func _declare(board: DotLeaderboardDef) -> DotResult:
+	if store != null and store.has_method("declare"):
+		return await store.call("declare", board)
+	return DotResult.success(true)
+
+
 func _accepted(
 	board: DotLeaderboardDef, entry: DotLeaderboardEntry, previous: DotLeaderboardEntry
 ) -> DotResult:
-	if report_to_backbone:
+	# A backbone store already wrote it; queueing it too would submit twice.
+	if report_to_backbone and not (store != null and store.has_method("is_remote")):
 		reporter.queue_entry(board, entry)
 
 	entry_accepted.emit(board, entry, previous)
