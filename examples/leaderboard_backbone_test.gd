@@ -7,8 +7,8 @@ extends Node
 ## godot --headless --path . res://examples/leaderboard_backbone_test.tscn
 ## [/codeblock]
 
-const CHECKS := 41
-const SECTIONS := 7
+const CHECKS := 56
+const SECTIONS := 8
 const PORT := 18942
 
 var _passed := 0
@@ -20,9 +20,8 @@ var _server := TCPServer.new()
 var _conns: Array = []
 ## Requests the fake saw: {method, path, query, body, auth}.
 var _seen: Array = []
-## Fake state: "board|scope" -> {kind, rows: {player: {name, value, setAt}}}.
-var _boards: Dictionary = {}
-var _force_status := 0
+## The site's rules (declare before submit, ranking) live in the shared fake, behind this TCP door.
+var _site := DotLeaderboardFakeSite.new()
 var _client: Node = null
 
 
@@ -72,6 +71,7 @@ func _run() -> void:
 	await _test_failures()
 	await _test_no_client()
 	_test_key_split()
+	await _test_fake_site()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -228,16 +228,16 @@ func _test_failures() -> void:
 	_section("failures")
 	var store := _store()
 	var board := _board()
-	_force_status = 403
+	_site.force_status = 403
 	var res := await store.page(board)
 	_check(not res.ok and res.error.http_status == 403, "a 403 surfaces with its status")
-	_force_status = 500
+	_site.force_status = 500
 	res = await store.entry_for(board, &"ann")
 	_check(not res.ok, "a server error is a failure, not a null entry")
-	_force_status = 404
+	_site.force_status = 404
 	res = await store.entry_for(board, &"ann")
 	_check(res.ok and res.value == null, "an unknown board reads as no entry")
-	_force_status = 0
+	_site.force_status = 0
 	_done()
 
 
@@ -257,6 +257,67 @@ func _test_key_split() -> void:
 	var parts := DotLeaderboardStoreBackbone.split_key("fastest|map=a;style=b")
 	_check(parts["board"] == "fastest" and parts["scope"] == {"map": "a", "style": "b"}, "scope parsed")
 	_check(DotLeaderboardStoreBackbone.split_key("plain")["scope"] == {}, "unscoped key has an empty scope")
+	_done()
+
+
+func _test_fake_site() -> void:
+	_section("in-process fake site")
+	var site := DotLeaderboardFakeSite.new(get_tree())
+	var board := _board()
+	var store := DotLeaderboardStoreBackbone.with_client(site)
+
+	var early := await _put(store, board, "ann", 5.0)
+	_check(not early.ok and early.error.code == DotError.CODE_INVALID, "a submit before the declare is refused")
+	_check((await store.declare(board)).ok, "declare succeeds")
+	_check((await _put(store, board, "ann", 12.0)).ok and (await _put(store, board, "bob", 9.0)).ok, "submits after the declare succeed")
+	var page := await store.page(board, 0, 10)
+	_check(page.ok and page.value.size() == 2 and page.value[0].player_id == &"bob" and page.value[0].rank == 1, "a TIME board reads best first")
+	var mine := await store.entry_for(board, &"ann")
+	_check(mine.ok and mine.value.rank == 2, "entry_for ranks the player")
+	_check(site.posts() == 4, "posts counts defines and submits", str(site.posts()))
+
+	var other := board.scoped({"map": "surf_z"})
+	var elsewhere := await store.page(other)
+	_check(elsewhere.ok == false and elsewhere.error.http_status == 404, "a board in another scope is a different board")
+
+	var scored := DotLeaderboardDef.make(&"kills", DotLeaderboardDef.Kind.SCORE)
+	scored.publish = true
+	await store.declare(scored)
+	await _put(store, scored, "ann", 3.0)
+	await _put(store, scored, "bob", 8.0)
+	var high := await store.page(scored)
+	_check(high.ok and high.value[0].player_id == &"bob", "a score board reads highest first")
+
+	var before_frame := Engine.get_process_frames()
+	await site.get_integration("leaderboard/board", {"board": "fastest", "scope": "map=surf_a"})
+	_check(Engine.get_process_frames() > before_frame, "an answer takes a frame")
+
+	site.latency_frames = 0
+	var instant := await site.get_integration("leaderboard/board", {"board": "fastest", "scope": "map=surf_a"})
+	_check(instant.ok, "latency_frames 0 answers at once")
+	site.latency_frames = 1
+
+	site.granted_scopes = PackedStringArray(["LEADERBOARD_READ"])
+	var denied := await _put(store, board, "cy", 1.0)
+	_check(not denied.ok and denied.error.http_status == 403, "a missing write scope is a 403")
+	_check((await store.page(board)).ok, "a held read scope reads")
+	site.granted_scopes = PackedStringArray()
+
+	site.force_status = 500
+	_check(not (await store.page(board)).ok, "force_status fails every call")
+	site.force_status = 0
+
+	var manager := DotLeaderboardManager.new()
+	manager.backend = "backbone"
+	manager.backbone_client = site
+	manager.report_interval = 0.0
+	add_child(manager)
+	manager.define(board)
+	var filed := await manager.submit_async(&"fastest", {"map": "surf_a"}, &"dee", "Dee", 4.0)
+	_check(filed.ok and filed.value.rank == 1, "a manager files through the fake and reads the rank back")
+	var plain := manager.page(&"fastest", {"map": "surf_a"})
+	_check(not plain.ok, "the plain form refuses it, as it does a real site")
+	manager.queue_free()
 	_done()
 
 
@@ -295,69 +356,10 @@ func _respond(peer: StreamPeerTCP, buf: PackedByteArray) -> void:
 	var body: Variant = JSON.parse_string(text.substr(split + 4)) if request[0] == "POST" else null
 	_seen.append({"method": request[0], "path": path, "query": query, "body": body, "auth": auth, "nonce": nonce})
 
-	var status := 200
-	var reply: Dictionary = {}
-	if _force_status != 0:
-		status = _force_status
-		reply = {"error": "forced"}
-	elif path.ends_with("leaderboard/define"):
-		for b in body["boards"]:
-			_boards["%s|%s" % [b["key"], _scope_string(b.get("scope", {}))]] = {"kind": b["kind"], "rows": {}}
-		reply = {"ok": true}
-	elif path.ends_with("leaderboard/submit"):
-		var refused := []
-		for e in body["entries"]:
-			var key := "%s|%s" % [e["board"], _scope_string(e.get("scope", {}))]
-			if not _boards.has(key):
-				refused.append("%s: no such board — declare it first." % key)
-				continue
-			_boards[key]["rows"][e["player"]] = {"name": e["name"], "value": e["value"], "setAt": int(e.get("setAt", 1))}
-		reply = {"ok": true, "accepted": body["entries"].size(), "refused": refused}
-	elif path.ends_with("leaderboard/board"):
-		var key := "%s|%s" % [query["board"], query["scope"]]
-		if not _boards.has(key):
-			status = 404
-			reply = {"error": "No such leaderboard."}
-		else:
-			reply = _read_board(key, query)
-	else:
-		status = 404
+	var answered := _site.handle(request[0], path, query, body)
+	var status: int = answered["status"]
+	var reply: Dictionary = answered["reply"]
 	var payload := JSON.stringify(reply).to_utf8_buffer()
 	var head := "HTTP/1.1 %d X\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n" % [status, payload.size()]
 	peer.put_data(head.to_utf8_buffer() + payload)
 	peer.disconnect_from_host()
-
-
-func _scope_string(scope: Dictionary) -> String:
-	var keys := scope.keys()
-	keys.sort()
-	var parts := PackedStringArray()
-	for k in keys:
-		parts.append("%s=%s" % [k, scope[k]])
-	return ";".join(parts)
-
-
-func _read_board(key: String, query: Dictionary) -> Dictionary:
-	var board: Dictionary = _boards[key]
-	var ascending: bool = board["kind"] in ["TIME", "PENALTY"]
-	var ids: Array = board["rows"].keys()
-	ids.sort_custom(func(a: String, b: String) -> bool:
-		var va: float = board["rows"][a]["value"]
-		var vb: float = board["rows"][b]["value"]
-		if va == vb:
-			return a < b
-		return va < vb if ascending else va > vb)
-	var rows := []
-	var offset := int(query["offset"])
-	for i in range(offset, mini(ids.size(), offset + int(query["limit"]))):
-		rows.append(_row(board, ids[i], i + 1))
-	var mine: Variant = null
-	var player: String = query.get("player", "")
-	if player != "" and board["rows"].has(player):
-		mine = _row(board, player, ids.find(player) + 1)
-	return {"ok": true, "board": {"entries": ids.size()}, "rows": rows, "self": mine}
-
-
-func _row(board: Dictionary, player: String, rank: int) -> Dictionary:
-	var r: Dictionary = board["rows"][player]
-	return {"rank": rank, "player": player, "name": r["name"], "value": r["value"], "setAt": r["setAt"], "meta": null}

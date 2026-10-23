@@ -24,7 +24,8 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | `addons/dot_leaderboard/store/` | `DotLeaderboardStore` (abstract), backbone (the site's `/api/integration/v1/leaderboard/*`: top, around-me, rank; remote, `_async` only; the manager skips its reporter for it), memory (sorted on write, ranks materialised), SQL (SQLite, Postgres, MySQL via dot-sql), `DotLeaderboardSqlSchema` |
 | `addons/dot_leaderboard/net/` | `DotLeaderboardReporter`: batches, queues and retries to the backbone |
 | `addons/dot_leaderboard/runtime/` | `DotLeaderboardManager`: boards, store and reporter; the node a game adds |
-| `examples/leaderboard_backbone_test.tscn` | the backbone store against a fake site through dot-auth's client |
+| `addons/dot_leaderboard/testing/` | `DotLeaderboardFakeSite`: the in-process fake site for tests (`post_integration`/`get_integration`, one frame of latency, declare-before-submit, optional scope checks); games use it, never their own copy |
+| `examples/leaderboard_backbone_test.tscn` | the backbone store against the fake site, over TCP through dot-auth's client and in-process |
 | `examples/leaderboard_selftest.tscn` | the suite (the SQL store through dot-sql's recording driver) |
 | `examples/leaderboard_sql_live.tscn` | the SQL store against real databases |
 
@@ -65,6 +66,6 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 
 ## Open
 
-- **game-arena and game-hungario call the synchronous `submit`/`page`/`entry_for`.** Once they await the `_async` forms, the plain forms can become the awaited ones. [storage](docs/storage.md#why-there-are-_async-forms)
+- **The plain `submit`/`page`/`entry_for` are still the synchronous forms.** game-arena and game-hungario now await the `_async` forms (their suites run them against `DotLeaderboardFakeSite`), so the plain forms can become the awaited ones in a breaking release. [storage](docs/storage.md#why-there-are-_async-forms)
 
 Deliberately not here: a UI, cross-map ranking, seasons as code, reading the backbone's copy, anti-cheat. [design](docs/design.md#deliberately-not-here)
