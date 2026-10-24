@@ -12,13 +12,13 @@ extends Node
 ## `_test_reporter_keeps_its_queue` checks that a backbone outage costs latency rather
 ## than results.
 
-const CHECKS := 110
+const CHECKS := 120
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 13
+const SECTIONS := 14
 
 var _passed := 0
 var _failed := 0
@@ -49,6 +49,7 @@ func _run() -> void:
 	await _test_reporter_bounds_its_queue()
 	await _test_publish_is_opt_in()
 	await _test_sql_store()
+	_test_boards_config()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -895,3 +896,34 @@ class FailSecond extends DotSqlDriverRecording:
 			statements.append({"sql": sql, "params": params.duplicate()})
 			return DotResult.fail(DotError.CODE_IO, "disk full")
 		return await super(sql, params)
+
+
+# --- Boards config ---------------------------------------------------------
+
+func _test_boards_config() -> void:
+	_section("the boards config takes its names from the game")
+	var config := DotBoardsConfig.for_game("g2g")
+	_check(config.env_prefix() == "G2G_BOARDS_", "environment prefix is upper-case game plus _BOARDS_", config.env_prefix())
+	_check(config.cli_prefix() == "--g2g_boards_", "command-line prefix uses underscores", config.cli_prefix())
+	_check(DotBoardsConfig.for_game("hungry", "-").cli_prefix() == "--hungry-boards-", "a hyphen separator is honoured")
+	_check(DotBoardsConfig.json_path_for("arena") == "user://arena_boards.json", "the file is user://<game>_boards.json")
+	_check(config.backend == "memory" and config.validate().ok, "the default is memory and valid")
+
+	config.apply_dictionary({"backend": "backbone"})
+	_check(config.backend == "backbone" and config.validate().ok, "a dictionary layer sets backbone")
+	config.backend = "carrier-pigeon"
+	_check(not config.validate().ok, "an unknown backend is refused")
+
+	var path := "user://dot_boards_config_selftest.json"
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string('{"backend": "backbone"}')
+	file.close()
+	var layered := DotBoardsConfig.for_game("selftest").load_layered(path)
+	_check(layered.ok, "load_layered reads the JSON file", str(layered.error) if not layered.ok else "")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+	var from_cli := DotBoardsConfig.for_game("selftest")
+	var applied := from_cli.apply_cli()
+	_check(applied.is_empty() and from_cli.backend == "memory", "no flag leaves the default")
+	_check(DotBoardsConfig.new().env_prefix() == "", "a config with no game reads no environment")
+	_done()

@@ -35,3 +35,7 @@ A `running_total` board's entries go in their own request with the site's `overw
 ## Reading the backbone: `DotLeaderboardStoreBackbone`
 
 The reporter only writes. `DotLeaderboardStoreBackbone` is a store whose boards live on the site: `declare` (define, once per board), `put` (submit with `overwrite`, because the manager already judged improvement), `page`/`top`, `entry_for`, `rank_entry`, `around` and `count_on`, through `GET .../board` with the `LEADERBOARD_READ` scope. Select it with `DotLeaderboardManager.backend = "backbone"` and `backbone_client` (or a registered `dot_backbone_client`); memory stays the default. It is remote, so use the `_async` forms, and the manager does not also queue to the reporter. Authentication is the integration token on the client; the API takes no player token. Statistics are not on the site and stay unsupported.
+
+## Choosing the store: `DotBoardsConfig`
+
+`DotBoardsConfig.for_game("arena")` is the one config every game's server uses to pick `memory` or `backbone`: `ARENA_BOARDS_BACKEND`, `--arena_boards_backend` (`for_game("hungry", "-")` gives `--hungry-boards-backend`), and `DotBoardsConfig.json_path_for("arena")` for the file. Call `load_layered(path)` and assign `boards.backend = config.backend`; do not copy the class into a game.
