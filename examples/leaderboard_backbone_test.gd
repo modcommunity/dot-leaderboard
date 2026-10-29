@@ -2,10 +2,7 @@ extends Node
 
 ## The backbone store against a fake website-city in this process, through the real
 ## dot-auth DotBackboneClient (so DotHttp and the HTTPRequest path are exercised).
-##
-## [codeblock]
-## godot --headless --path . res://examples/leaderboard_backbone_test.tscn
-## [/codeblock]
+## Run: godot --headless --path . res://examples/leaderboard_backbone_test.tscn
 
 const CHECKS := 56
 const SECTIONS := 8
@@ -116,8 +113,6 @@ func _store() -> DotLeaderboardStoreBackbone:
 func _put(store: DotLeaderboardStoreBackbone, board: DotLeaderboardDef, player: String, value: float) -> DotResult:
 	return await store.put(DotLeaderboardEntry.make(board.key(), StringName(player), player.capitalize(), value))
 
-
-# --- Sections --------------------------------------------------------------
 
 func _test_define_and_submit() -> void:
 	_section("define and submit")
@@ -320,8 +315,6 @@ func _test_fake_site() -> void:
 	manager.queue_free()
 	_done()
 
-
-# --- The fake site ---------------------------------------------------------
 
 func _complete(buf: PackedByteArray) -> bool:
 	var text := buf.get_string_from_utf8()

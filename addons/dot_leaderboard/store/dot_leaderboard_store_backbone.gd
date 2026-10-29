@@ -138,10 +138,8 @@ func rank_entry(board: DotLeaderboardDef, player_id: StringName) -> DotResult:
 	return DotResult.success(found.value.rank if found.value != null else 0)
 
 
-## The player's row with [param radius] entries above and below it: "around me".
-##
-## Two requests, because the site gives the rank only with the player's own row and a page
-## is addressed by offset. A player with no entry gets the top of the board instead.
+## The player's row with [param radius] entries each side. Two requests: the site gives the
+## rank only with the player's own row, and a page is addressed by offset. No entry: top of board.
 func around(board: DotLeaderboardDef, player_id: StringName, radius: int = 3) -> DotResult:
 	var found := await entry_for(board, player_id)
 	if not found.ok:

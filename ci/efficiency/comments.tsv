@@ -12,7 +12,7 @@ addons/dot_leaderboard/store/dot_leaderboard_store.gd::long_block	4
 addons/dot_leaderboard/store/dot_leaderboard_store_memory.gd::history	1
 addons/dot_leaderboard/store/dot_leaderboard_store_memory.gd::long_block	4
 addons/dot_leaderboard/store/dot_leaderboard_store_sql.gd::long_block	3
-examples/leaderboard_selftest.gd::banner	5
+examples/leaderboard_selftest.gd::banner	4
 examples/leaderboard_selftest.gd::history	1
-examples/leaderboard_selftest.gd::long_block	5
+examples/leaderboard_selftest.gd::long_block	4
 examples/leaderboard_sql_live.gd::long_block	1
