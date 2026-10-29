@@ -30,7 +30,9 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	while _server.is_listening() and _server.is_connection_available():
 		_conns.append({"peer": _server.take_connection(), "buf": PackedByteArray()})
-	for conn in _conns.duplicate():
+	var i := 0
+	while i < _conns.size():
+		var conn: Dictionary = _conns[i]
 		var peer: StreamPeerTCP = conn["peer"]
 		peer.poll()
 		var n := peer.get_available_bytes()
@@ -41,7 +43,9 @@ func _process(_delta: float) -> void:
 			conn["buf"] = chunk
 		if _complete(conn["buf"]):
 			_respond(peer, conn["buf"])
-			_conns.erase(conn)
+			_conns.remove_at(i)
+		else:
+			i += 1
 
 
 func _run() -> void:
