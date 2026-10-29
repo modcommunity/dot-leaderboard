@@ -38,12 +38,8 @@ func _manager() -> DotLeaderboardManager:
 	return manager
 
 
-## The SQL store against a driver that records what it is asked.
-##
-## What a store gets wrong is which statements it sends, in what order, with which values
-## bound where, and how it maps rows back — none of which needs a database.
-## examples/leaderboard_sql_live.tscn runs the same store against real SQLite, Postgres and
-## MariaDB through dot-sql's gateway, which is what says the SQL is valid.
+## The SQL store against a driver that records the statements, their order and bound values.
+## leaderboard_sql_live.tscn runs the same store against real databases, which proves the SQL valid.
 func _test_sql_store() -> void:
 	_section("the SQL store, against a driver that records what it is asked")
 
@@ -85,6 +81,16 @@ func _test_sql_store() -> void:
 	var board := DotLeaderboardDef.make(&"fastest", DotLeaderboardDef.Kind.TIME, {"map": "surf_a"})
 	var entry := DotLeaderboardEntry.make(board.key(), &"p1", "O'Brien; DROP", 12.5, {"replay": "r1"})
 	entry.set_at = 1700000000
+
+	await _sql_writes(driver, store, board, entry)
+	await _sql_reads(driver, store, board, entry)
+	await _sql_counters(driver, store, board, entry)
+	await _sql_failures(driver, store, board, entry)
+	await _sql_manager(driver, store, board)
+	_done()
+
+
+func _sql_writes(driver: DotSqlDriverRecording, store: DotLeaderboardStoreSql, board: DotLeaderboardDef, entry: DotLeaderboardEntry) -> void:
 	driver.clear()
 	driver.answers = {
 		"SELECT board_key, player_id": [{
@@ -124,6 +130,8 @@ func _test_sql_store() -> void:
 		for _i in range(3):
 			_check(false, "the write statement was not recorded")
 
+
+func _sql_reads(driver: DotSqlDriverRecording, store: DotLeaderboardStoreSql, board: DotLeaderboardDef, entry: DotLeaderboardEntry) -> void:
 	# Reading a page: the direction and the comparison come from the board's kind.
 	driver.clear()
 	driver.rows = [
@@ -174,6 +182,8 @@ func _test_sql_store() -> void:
 	var counted: DotResult = await store.count_on(board)
 	_check(counted.ok and counted.value is int and counted.value == 42, "a count comes back an int, whatever JSON made of it")
 
+
+func _sql_counters(driver: DotSqlDriverRecording, store: DotLeaderboardStoreSql, board: DotLeaderboardDef, entry: DotLeaderboardEntry) -> void:
 	# Counters: additive in the database, in the driver's own dialect.
 	driver.clear()
 	driver.answers = {"SELECT stat_id, amount": [{"stat_id": "kills", "amount": 7.0}, {"stat_id": "metres", "amount": "120.5"}]}
@@ -211,6 +221,8 @@ func _test_sql_store() -> void:
 		"a NaN is refused before any statement: JSON cannot carry one and MySQL refuses it"
 	)
 
+
+func _sql_failures(driver: DotSqlDriverRecording, store: DotLeaderboardStoreSql, board: DotLeaderboardDef, entry: DotLeaderboardEntry) -> void:
 	# Failures are failures.
 	driver.clear()
 	driver.fail_next = "connection reset"
@@ -235,6 +247,8 @@ func _test_sql_store() -> void:
 		"a database from a newer build is refused, and nothing is created in it"
 	)
 
+
+func _sql_manager(driver: DotSqlDriverRecording, store: DotLeaderboardStoreSql, board: DotLeaderboardDef) -> void:
 	# Through the manager. The synchronous form refuses a store that suspends, in words.
 	var manager := DotLeaderboardManager.new()
 	manager.store = store
@@ -274,7 +288,6 @@ func _test_sql_store() -> void:
 	)
 
 	manager.queue_free()
-	_done()
 
 
 ## A recording driver that fails every statement containing [member fail_on].
