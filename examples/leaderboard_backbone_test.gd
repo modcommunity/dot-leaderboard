@@ -24,10 +24,15 @@ var _client: Node = null
 
 func _ready() -> void:
 	DotLog.set_level(DotLog.Level.ERROR)
+	var pump := Timer.new()
+	pump.wait_time = 0.01
+	pump.timeout.connect(_pump)
+	add_child(pump)
+	pump.start()
 	_run.call_deferred()
 
 
-func _process(_delta: float) -> void:
+func _pump() -> void:
 	while _server.is_listening() and _server.is_connection_available():
 		_conns.append({"peer": _server.take_connection(), "buf": PackedByteArray()})
 	var i := 0
