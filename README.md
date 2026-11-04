@@ -100,7 +100,7 @@ Needs the `LEADERBOARD_WRITE` scope on a server- or app-scoped integration. Noth
 
 ```bash
 godot --headless --path . --import
-godot --headless --path . res://examples/leaderboard_selftest.tscn   # 13 sections, 107 checks
+godot --headless --path . res://examples/leaderboard_selftest.tscn   # 14 sections, 120 checks
 
 # the SQL store against real SQLite, Postgres and MariaDB (dot-sql linked in addons/)
 ../dot-sql/tools/test_live.sh . res://examples/leaderboard_sql_live.tscn
