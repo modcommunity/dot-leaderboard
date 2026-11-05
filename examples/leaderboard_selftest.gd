@@ -12,7 +12,7 @@ extends "leaderboard_selftest_sql.gd"
 ## `_test_reporter_keeps_its_queue` checks that a backbone outage costs latency rather
 ## than results.
 
-const CHECKS := 120
+const CHECKS := 123
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -82,6 +82,11 @@ func _test_definitions() -> void:
 	_check(board.validate().ok, "a board validates")
 	_check(board.lower_is_better(), "a time board is lower-is-better")
 	_check(board.decimals == 3, "and defaults to three decimals")
+	var site := DotLeaderboardDef.to_site_defs([board])
+	var row: Dictionary = (site["boards"] as Array)[0]
+	_check(site["format"] == "dot-leaderboard-defs" and not site.has("game"), "the site document names its format and leaves the app id out")
+	_check(row["key"] == "fastest" and row["kind"] == "TIME" and row["scope"] == {"map": "surf_beginner"}, "an exported board carries key, kind name and scope")
+	_check(row["name"] == "fastest", "a board without a name is labelled by its id")
 
 	var score := DotLeaderboardDef.make(&"kills", DotLeaderboardDef.Kind.SCORE)
 	_check(not score.lower_is_better(), "a score board is higher-is-better")
