@@ -234,6 +234,28 @@ static func from_dictionary(data: Dictionary) -> DotLeaderboardDef:
 
 ## The kind's name, which is what leaves the server: "TIME", "SCORE", "POINTS",
 ## "PENALTY" — the backbone's enum, spelled the same on purpose.
+## The site's `dot-leaderboard-defs` document for [param boards]; [param game] 0 leaves the app id out.
+static func to_site_defs(boards: Array, game: int = 0) -> Dictionary:
+	var rows: Array = []
+	for board in boards:
+		var b := board as DotLeaderboardDef
+		if b == null:
+			continue
+		var scope := {}
+		for k in b.scope:
+			scope[str(k)] = str(b.scope[k])
+		rows.append({
+			"key": String(b.id), "scope": scope, "name": b.display_name if b.display_name != "" else String(b.id),
+			"description": b.description, "kind": kind_name(b.kind), "decimals": b.decimals,
+			"unit": b.unit, "visible": b.visible,
+		})
+	var out := {"format": "dot-leaderboard-defs", "version": 1}
+	if game > 0:
+		out["game"] = game
+	out["boards"] = rows
+	return out
+
+
 static func kind_name(p_kind: Kind) -> String:
 	return Kind.keys()[int(p_kind)] if int(p_kind) >= 0 and int(p_kind) < Kind.size() else "TIME"
 

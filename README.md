@@ -96,6 +96,20 @@ Needs the `LEADERBOARD_WRITE` scope on a server- or app-scoped integration. Noth
 
 [`docs/`](docs/README.md) has the design reasoning: why boards and statistics are different problems, why the manager sorts and the store does not, why there are two forms of `submit`, and the bugs the self-test found.
 
+## The leaderboard definitions file
+
+A game's boards can be written as the site's `dot-leaderboard-defs` JSON, for the dashboard import or a deploy. Run `tools/export_site_defs.gd` from the game project with the static method that returns an array of `DotLeaderboardDef`; it takes `--source`, `--method`, `--out` (default `deployment/leaderboard-defs.json`), `--game` and `--check`.
+
+`--check` exits 1 when the file is stale; `--game <id>` pins the site app id (left out by default). The file is `DotLeaderboardDef.to_site_defs()`:
+
+```json
+{"format": "dot-leaderboard-defs", "version": 1, "boards": [
+  {"key": "fastest", "scope": {"map": "surf_beginner"}, "name": "Fastest", "description": "",
+   "kind": "TIME", "decimals": 3, "unit": "", "visible": true}]}
+```
+
+`kind` is `TIME`, `SCORE`, `POINTS` or `PENALTY`. A board is identified by `key` plus `scope`; importing merges, and boards the file does not mention, with their entries, are kept.
+
 ## Validating
 
 ```bash
