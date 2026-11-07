@@ -31,7 +31,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 
 ## Running and testing
 
-- The family's two steps ([game-dev/CLAUDE.md](../../CLAUDE.md#validating-anything)), then `godot --headless --path . res://examples/leaderboard_selftest.tscn`.
+- The family's two steps ([family CLAUDE.md](../../CLAUDE.md#validating-anything)), then `godot --headless --path . res://examples/leaderboard_selftest.tscn`.
 - Anything in the SQL store: `../dot-sql/tools/test_live.sh . res://examples/leaderboard_sql_live.tscn` (SQLite always; Postgres and MySQL with `DOT_SQL_PG_DSN` / `DOT_SQL_MYSQL_DSN`). [storage](docs/storage.md#testing)
 - A change to the manager's sync forms: re-run game-arena's and game-hungario's suites, which call them.
 
