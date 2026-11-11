@@ -33,7 +33,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 
 - The family's two steps ([family CLAUDE.md](../../CLAUDE.md#validating-anything)), then `godot --headless --path . res://examples/leaderboard_selftest.tscn`.
 - Anything in the SQL store: `../dot-sql/tools/test_live.sh . res://examples/leaderboard_sql_live.tscn` (SQLite always; Postgres and MySQL with `DOT_SQL_PG_DSN` / `DOT_SQL_MYSQL_DSN`). [storage](docs/storage.md#testing)
-- A change to the manager's sync forms: re-run game-arena's and game-hungario's suites, which call them.
+- A change to the manager's sync forms: re-run game-fatal-contact's and game-hungario's suites, which call them.
 
 ## Rules that bite
 
@@ -66,6 +66,6 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 
 ## Open
 
-- **The plain `submit`/`page`/`entry_for` are still the synchronous forms.** game-arena and game-hungario now await the `_async` forms (their suites run them against `DotLeaderboardFakeSite`), so the plain forms can become the awaited ones in a breaking release. [storage](docs/storage.md#why-there-are-_async-forms)
+- **The plain `submit`/`page`/`entry_for` are still the synchronous forms.** game-fatal-contact and game-hungario now await the `_async` forms (their suites run them against `DotLeaderboardFakeSite`), so the plain forms can become the awaited ones in a breaking release. [storage](docs/storage.md#why-there-are-_async-forms)
 
 Deliberately not here: a UI, cross-map ranking, seasons as code, reading the backbone's copy, anti-cheat. [design](docs/design.md#deliberately-not-here)

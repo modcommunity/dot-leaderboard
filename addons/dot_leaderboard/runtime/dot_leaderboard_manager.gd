@@ -186,7 +186,7 @@ func definitions() -> Array[DotLeaderboardDef]:
 # really suspends — DotLeaderboardStoreSql — that aborts the call with "Trying to call an
 # async function without await" and hands the caller null. Adding the `await` here is the
 # fix, and it makes each of them a coroutine, which is a PARSE error at every caller that
-# does not await it: game-arena (`_cmd_boards`, headless_match) and game-hungario (`_submit`,
+# does not await it: game-fatal-contact (`_cmd_boards`, headless_match) and game-hungario (`_submit`,
 # `page`) call them synchronously today, and an addon edit that stops two games parsing is
 # not a fix. So the `_async` forms are the real ones and work with every store; the plain
 # forms stay synchronous, keep working with the memory store, and refuse an asynchronous

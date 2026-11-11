@@ -21,7 +21,7 @@ A table that rewrote every row's rank on every submission turns one write into a
 
 `DotLeaderboardStore` says every method is a coroutine in shape, because an interface written against the in-memory case has to be rewritten the first time somebody points it at a database. The manager called `store.entry_for`, `store.put` and `store.page` without `await`; against a store that really suspends, Godot aborts the call with *"Trying to call an async function without await"* and the caller gets null.
 
-Adding the `await` makes `submit`, `page` and `entry_for` coroutines, which is a **parse error** at every caller that does not await them, and game-arena (`arena_boards.gd`, `arena_module._cmd_boards`, `headless_match`) and game-hungario (`hungry_progress`) do not. An addon edit that stops two games parsing is not a fix, so:
+Adding the `await` makes `submit`, `page` and `entry_for` coroutines, which is a **parse error** at every caller that does not await them, and game-fatal-contact (`arena_boards.gd`, `arena_module._cmd_boards`, `headless_match`) and game-hungario (`hungry_progress`) do not. An addon edit that stops two games parsing is not a fix, so:
 
 - `submit_async`, `page_async` and `entry_for_async` are the awaited forms and work with every store.
 - The plain forms stay synchronous and **refuse** a store whose `is_synchronous()` is false, naming the form that works.
